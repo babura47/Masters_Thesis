@@ -30,8 +30,11 @@ class Event:
     def __lt__(self, other):
         return self.event_time < other.event_time
 
-def simulate_tandem_mm1_queue(parameters, simulation_time):
+def simulate_network(parameters, simulation_time, routing_probabilities ):
+
     [lambda_rate, mu1, mu2, mu3 , mu4, mu5] = parameters
+    
+    [p,q,r] = routing_probabilities
     
     time = 0
     event_queue = []
@@ -111,7 +114,7 @@ def simulate_tandem_mm1_queue(parameters, simulation_time):
             n5 = len(queue5)+int(server5_busy)
             state_upon_arrival[customer_id] = [n1,n2,n3,n4,n5]
             
-            Q1orQ2 = random.choices([1,2], weights=[0.5,0.5])[0] 
+            Q1orQ2 = random.choices([1,2], weights=[p,1-p])[0] 
             decision1[event.customer_id] = Q1orQ2 
             
             if Q1orQ2 == 1:
@@ -168,7 +171,7 @@ def simulate_tandem_mm1_queue(parameters, simulation_time):
             """
             make a choice here between queue 3 and 4
             """
-            branch = random.choices([3,4], weights=[0.5,0.5])[0]
+            branch = random.choices([3,4], weights=[q,1-q])[0]
             decision2[event.customer_id] = branch
             
             if branch == 3:
@@ -211,7 +214,7 @@ def simulate_tandem_mm1_queue(parameters, simulation_time):
             """
             make a choice here between queue 4 and 5
             """
-            branch = random.choices([4,5], weights=[0.5,0.5])[0]
+            branch = random.choices([4,5], weights=[r,1-r])[0]
             decision3[event.customer_id] = branch
             
             if branch == 4:
@@ -271,11 +274,9 @@ def simulate_tandem_mm1_queue(parameters, simulation_time):
         elif event.event_type == DEPARTURE_Q5:
             
             departures[4] += 1
-
             
             waiting_time_q5 = time - arrival_times_q5[event.customer_id] - service_times_q5[event.customer_id] # add minus  service time of customer
             total_waiting_time_q5 += waiting_time_q5
-            
             if queue5:
                 next_customer = queue5.pop(0)
                 service_time = np.random.exponential(1 / mu5)
@@ -305,21 +306,22 @@ def simulate_tandem_mm1_queue(parameters, simulation_time):
         'decisions3': decision3
     }
 
-[p]=[0.5]
+[p,q,r] = [0.5, 0.66666666666, 0.33333333333]
 
 # Parameters
 lam = 2.0
 mu1 = 3.0; lam1= p*lam       
-mu2 = 2.; lam2=p*lam       
-mu3 = 2.; lam3 = p*p*lam 
-mu4=3.; lam4 = 2*(p*(1-p))*lam
-mu5=1.; lam5= p*p*lam
+mu2 = 3.; lam2=(1-p)*lam       
+
+mu3 = 2.; lam3 = p*q*lam 
+mu4=2.; lam4 = ((p*(1-q))+(1-p)*r)*lam
+mu5=2.; lam5= (1-p)*(1-r)*lam
 params=[lam,mu1,mu2,mu3, mu4,mu5]
 
-simulation_time = 10 
+simulation_time = 50000
 
 # Run the simulation
-results = simulate_tandem_mm1_queue(params,  simulation_time)
+results = simulate_network(params,  simulation_time,[p,q,r])
 
 # Output results
 print(f"Total customers arrived: {results['total_customers']}")
@@ -335,6 +337,7 @@ print(f"Average waiting time in Queue 3: {results['avg_waiting_time_q3']:.4f}, e
 print(f"Average waiting time in Queue 4: {results['avg_waiting_time_q4']:.4f}, expected {round(lam4/(mu4*(mu4-lam4)),3)}")
 print(f"Average waiting time in Queue 5: {results['avg_waiting_time_q5']:.4f}, expected {round(lam5/(mu5*(mu5-lam5)),3)}")
 
-print()
+
+
 
 
