@@ -1,0 +1,370 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep 12 09:47:27 2024
+
+@author: barba
+"""
+import numpy as np
+from scipy.optimize import minimize
+from scipy.optimize import Bounds
+from scipy.optimize import least_squares
+
+max_res_q1=1e-5
+max_res_r0=1e-5
+max_res_nonzero = 1e-5
+
+tol_E_q1 = 1e-3
+tol_E_r0=1e-3
+tol_E_nonzero=1e-3
+
+C=10000
+
+
+def nash_nonzero(params):
+    [l,a,b,c,d,e] = params
+    # Basic feasibility
+    check0 = l < a + b
+    check01 = l < c + d + e
+
+    feasibility = [check0, check01]
+    if all(feasibility)  != True:
+        print('the system is not feasible!')
+    
+    B = -(a - b) * l - a**2 - b**2
+    A = (a - b) * l
+    C = a**2
+
+    D = B**2 - 4 * A * C
+
+    if a != b:
+        p = (-B - np.sqrt(D)) / (2 * A)
+    else:
+        p = 0.5
+        
+
+    # From scrap paper (terms T1-T17)
+    T1 = l**2 * p**4 * (c - d)**2
+    T2 = 2 * p**3 * l * (2 * c * p * d + c**2 * d + d**3 - c**2 * p * l - c**3 - c * d**2 - l * d**2 * p)
+    T3 = c**2 * p**4 * l**2 + p**2 * c**4 + p**2 * d**4 + l**2 * d**2 * p**4 + 4 * c**3 * p**3 * l + 2 * c * p**3 * d**2 * l +  \
+    2 * (c * d * p)**2 - 2 * d**3 * p**3 * l - 2 * c * p**4 * l**2 * d - 4 * c**2 * p**3 * l * d
+    T4 = 2 * p**2 * c**2 * (p * d * l - p * c * l - c**2 - d**2)
+    T5 = c**4 * p**2
+    T6 = p**2 * l * (c - d)
+    T7 = p * (l * p * (d - c) - (d**2 + c**2))
+    T8 = c**2 * p
+    T9 = p * l * (p - 1) * (d - c)
+    T10 = (p - 1) * c**2
+    T11 = e * (p - 1) * (l - 2 * l * p - e) - d * (p - 1) * (l - 2 * l * p + d)
+    T12 = p * l * (p - 1) * (e - d)
+    T13 = p**2 * l**2 * d**2 + c**2 * p**2 * l**2 + (c * p**2 * l)**2 + (p**2 * l * d)**2 + 4 * c * d * p**3 * l**2 
+    - 2 * c**2 * p**3 * l**2 - 2 * p**2 * l**2 * c * d - 2 * p**4 * l**2 * c * d - 2 * p**3 * l**2 * d**2
+    T14 = 2 * p**3 * l * c**2 * d + 2 * p * l * c**2 * d + 4 * c**3 * p**2 * l - 2 * p**3 * c**3 * l - \
+    4 * p**2 * c**2 * l * d - 2 * c**3 * p * l
+    T15 = c**4 * (p - 1)**2
+    T16 = p * (l * (p - 1) * (d - e) - e**2)
+    T17 = p * e * (e + l * (p - 1)) + (p - 1) * d * (d - p * l)
+    C = (e - d) * l * (p - 1)**2
+
+    C0 = T5 * C + T8 * T10 * T11 + T15 * T17
+    C1 = T4 * C + T7 * T10 * T11 + T8 * T9 * T11 + T8 * T10 * T12 + T14 * T17 + T15 * T16
+    C2 = T3 * C + T6 * T10 * T11 + T7 * T9 * T11 + T7 * T10 * T12 + T8 * T9 * T12 + T13 * T17 + T14 * T16
+    C3 = T2 * C + T6 * T9 * T11 + T7 * T9 * T12 + T13 * T16
+    C4 = T1 * C + T6 * T9 * T12
+    
+    coefvct = [C4, C3, C2, C1, C0]
+
+
+    q = np.roots(coefvct)
+    q = np.real(q[np.isreal(q)])
+    q = q[(q >= 0) & (q <= 1)][0]
+        
+    Nr = c**2 * p - c * q * p**2 * l - p * q * c**2 + c * q**2 * p**2 * l - q * p * d**2 + l * q * d * p**2 - q**2 * p**2 * l * d
+    Dr = p**2 * l * q * d - p * l * q * d - c**2 + c * q * p * l + p * c**2 - c * q * p**2 * l
+    r = Nr / Dr
+    
+    v = np.array([p, q,r])
+
+    res = np.abs(F(v[1:],params))
+    expectations = [E(p*l, a)[0],E((1-p)*l, b)[0],E( p * q * l,c)[0] ,
+    E((p * (1 - q) + r * (1 - p)) * l,d)[0] ,E((1 - p) * (1 - r) * l,e) [0]]
+
+    return v, res, expectations, coefvct
+
+
+
+def E(l,mu):
+    if l<mu:
+        e=l/(mu*(mu-l)) 
+        feas=True
+    else: 
+        e = C
+        feas=False
+    return e, feas
+
+def dpE(l, mu):
+    if l<mu:
+        e=(2*l*mu-l**2)/(mu*(mu-l)**2)
+    else: 
+        e=C
+    return e
+
+
+
+def SC(params, probs): 
+    [p,q,r]=probs
+    [l,a,b,c,d,e]=params
+    E1 = E(p*l, a)[0]
+    E2 = E((1-p)*l, b)[0]
+    E3 = E(p*q*l, c)[0]
+    E4 = E(((1-p)*r+p*(1-q))*l, d)[0]
+    E5 = E((1-p)*(1-r)*l, e) [0]
+    Es= [E1, E2, E3, E4, E5]
+    not_feas = [i for i in range(len(Es)) if Es[i]==C]
+    # print("ES= {0}, not feasible= {1}".format(Es, not_feas))
+    
+    if len(not_feas)==0:
+        sc = p*l*E1 + (1-p)*l*E2 + p*q*l*E3 + ((1-p)*r+p*(1-q))*l*E4 + (1-p)*(1-r)*l*E5
+    else:
+        sc=C
+    
+    jsc= [0,0,0]
+    jsc[0] = l * dpE(p*l, a)-l*dpE((1-p)*l, b) + l*q*dpE(p*q*l, c) +(l*(1-q)-l*r)*dpE(l*(p*(1-q)+(1-p)*r),d) - (1-r)*l*dpE((1-p)*(1-r)*l, e)
+    jsc[1] = l*p*dpE(p*q*l, c) - l*p *dpE(l*(p*(1-q)+(1-p)*r),d) 
+    jsc[2] = dpE(l*(p*(1-q)+(1-p)*r),d) *l*(1-p) - l*(1-p)* dpE((1-p)*(1-r)*l, e)
+    return sc, jsc, not_feas, [E1,E2,E3,E4,E5]
+
+
+
+def social_optimum_scipy(params, x0):
+    
+    def SC_in_x(probs):
+        return SC(params, probs)[0]
+    
+    def SC_jacob(probs):    
+        return SC(params, probs)[1]
+    
+    [p,q,r] =  x0
+    [l,a,b,c,d,e] = params
+        
+    bounds = Bounds([0, 0,0], [1, 1,1])
+    
+    res= minimize(SC_in_x, x0, bounds=bounds, tol = 1e-13, jac= SC_jacob)
+    [p,q,r] = res.x
+    [l,a,b,c,d,e] = params
+    check = res.fun>0 
+    
+    if not np.all([p*l<a, (1-p)*l<b, p*q*l<c, l*(p*(1-q)+r*(1-p))<d, (1-r)*(1-p)*l<e]):
+        print(SC(params, res.x)[3])
+        
+    return res.x, check
+
+
+
+def F(w, params):
+    [l,a,b,c,d,e]=params
+    
+    q = w[0]
+    r = w[1]
+    
+    B = -(a - b) * l - a**2 - b**2
+    A = (a - b) * l
+    C = a**2
+
+    D = B**2 - 4 * A * C
+
+    if a != b:
+        p = (-B - np.sqrt(D)) / (2 * A)
+    else:
+        p = 0.5
+    
+    E3 =  E(p*q*l, c)[0]
+    E4 = E((p*(1-q)+r*(1-p))*l, d)[0]
+    E5= E((1-r)*(1-p)*l,e)[0]
+    
+    eq2 = E4-E5
+    eq3  = E3-E4
+    
+    
+    return np.array([eq2, eq3])
+    
+
+def Fq1(w, params):
+    [l,a,b,c,d,e]=params
+    p = w[0]
+    r = w[1]
+    
+    E1=E(p*l, a)[0]
+    E2 = E((1-p)*l, b)[0]
+    E3 = E(p*l, c)[0]
+    E4 = E(r*(1-p)*l, d)[0]
+    E5= E((1-r)*(1-p)*l,e)[0]
+    
+    eq1 = E4-E5
+    eq2= E1+E3 - E2 -E4
+
+    return np.array([eq1, eq2]) 
+
+
+
+def Fr0(w, params):
+    [l,a,b,c,d,e]=params
+    p = w[0]
+    q = w[1]
+    
+    E1=E(p*l, a)[0]
+    E2 = E((1-p)*l, b)[0]
+    E3 = E(p*q*l, c)[0]
+    E4 = E((1-q)*p*l, d)[0]
+    E5= E((1-p)*l,e)[0]
+    
+    eq1 = E3-E4
+    eq2= E1+E3-E2-E5
+    
+    return np.array([eq1, eq2]) 
+
+
+
+
+def zero_routing_q1(params, x0, tol_res, tol_e):
+    [l,a,b,c,d,e]=params
+
+    def Fq1_in_x(probs):
+        return Fq1(probs, params)
+
+    
+    bounds = Bounds([0, 0], [1, 1])
+    res= least_squares(Fq1_in_x, x0,ftol=1e-15, bounds=bounds)
+    
+    probs= np.insert(res.x, values=1, obj=1)
+    residual = Fq1(res.x, params)
+
+
+    p=probs[0]; q=probs[1]; r=probs[2]    
+
+    check_res = np.max(abs(residual))<tol_res
+    check_e = E(p*l, a)[0] - E((1-p)*l,b)[0] > - tol_e
+    check_feas = np.all([p*l<a, (1-p)*l<b, p*q*l<c, l*(p*(1-q)+r*(1-p))<d, (1-r)*(1-p)*l<e])
+    check = check_res and check_e and check_feas
+        
+
+    
+    return probs, residual, check, E(p*l, a)[0]- E((1-p)*l,b)[0]
+
+def zero_routing_r0(params, x0, tol_res, tol_e):
+    
+    def Fr0_in_x(probs):
+        return Fr0(probs, params)
+    
+    bounds = Bounds([0, 0], [1, 1])
+    res= least_squares(Fr0_in_x, x0,ftol=1e-15, bounds=bounds)
+    
+    probs= np.insert(res.x, values=0, obj=2)
+    residual = Fr0(res.x, params)
+
+
+    [l,a,b,c,d,e]=params
+    
+    p=probs[0]; q=probs[1]; r=probs[2]    
+    
+    check_res = np.max(abs(residual))<tol_res
+    check_e = E(p*l, a)[0] - E((1-p)*l,b)[0] < tol_e
+    check_feas = np.all([p*l<a, (1-p)*l<b, p*q*l<c, l*(p*(1-q)+r*(1-p))<d, (1-r)*(1-p)*l<e])
+    check = check_res and check_e and check_feas
+        
+    
+    return probs, residual, check, E(p*l, a)[0] - E((1-p)*l,b)[0]
+
+
+def nash_num(params, x0, tol_res, tol_e):
+    [l,a,b,c,d,e]=params    
+    
+    B = -(a - b) * l - a**2 - b**2
+    A = (a - b) * l
+    C = a**2
+
+    D = B**2 - 4 * A * C
+
+    if a != b:
+        p = (-B - np.sqrt(D)) / (2 * A)
+    else:
+        p = 0.5
+        
+    def F_in_qr(probs):
+        return F(probs, params)
+    bounds = Bounds([0, 0], [ 1, 1])
+    res= least_squares(F_in_qr, x0, bounds=bounds, ftol=1e-15, jac='2-point')
+
+    
+    probs= np.insert(res.x, values=p, obj=0)
+    residual = F(probs[1:], params)
+    [p,q,r] = probs
+
+
+    check_res = np.max(abs(residual))<tol_res
+    check_e =abs( E(p*l, a)[0] - E((1-p)*l,b)[0]) < tol_e
+    check_feas = np.all([p*l<a, (1-p)*l<b, p*q*l<c, l*(p*(1-q)+r*(1-p))<d, (1-r)*(1-p)*l<e])
+    check = check_res and check_e and check_feas
+    
+    
+    
+    return probs, residual, check, E(p*l, a)[0] -E((1-p)*l,b)[0]
+
+def nash_solver(params,x0, tol_res, tol_e):
+    
+
+    [p,q,r] = x0
+    [l,a,b,c,d,e]=params
+    
+    # if not np.all([p*l<a, (1-p)*l<b, p*q*l<c, p*(1-q)+r*(1-p)<l/d, (1-r)*(1-p)*l<e]):
+    #     print('input not feasible to non-zero')
+    # q=1
+    # if not np.all([p*l<a, (1-p)*l<b, p*q*l<c, p*(1-q)+r*(1-p)<l/d, (1-r)*(1-p)*l<e]):
+    #     print('input not feasible to q=1')
+    # r=0
+    # if not np.all([p*l<a, (1-p)*l<b, p*q*l<c, p*(1-q)+r*(1-p)<l/d, (1-r)*(1-p)*l<e]):
+    #     print('input not feasible to r=0')
+        
+    sol_found = False
+          
+    while sol_found == False:
+        
+        [probs1, resid1,check1,_] = zero_routing_q1(params,x0[0:3:2],tol_res,tol_e)
+        [probs2, resid2,check2,_] = zero_routing_r0(params,x0[0:2],tol_res,tol_e)
+        [probs3, resid3,check3,_] = nash_num(params,x0[1:],tol_res,tol_e)
+        
+        checks=[check1,check2,check3]
+        resids= [resid1,resid2,resid3]
+        
+        if len([i for i in range(len(resids)) if np.all(resids[i]>1e-5)])==3:
+            print("no sol found")
+        
+        if sum(checks)>=2:
+            tol_res=0.9*tol_res
+            tol_e = 0.9*tol_e
+        
+        if sum(checks) ==0:
+            tol_res=1.1*tol_res
+            tol_e = 1.1*tol_e            
+        
+        else:
+            if check3:
+                probs = probs3
+                resid = resid3
+                solver_ind = 3
+            elif check1:
+                probs = probs1
+                resid = resid1
+                solver_ind = 1
+            elif check2:
+                probs = probs2
+                resid = resid2
+                solver_ind = 2
+            sol_found = True
+    [p,q,r] = probs
+    
+    if not np.all([p*l<a, (1-p)*l<b, p*q*l<c, l*(p*(1-q)+r*(1-p))<d, (1-r)*(1-p)*l<e]):
+        print('Nash output not feasible')
+
+    
+    return probs,resid, checks, solver_ind, resids, [tol_res, tol_e]
+
