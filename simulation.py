@@ -9,6 +9,8 @@ import numpy as np
 import heapq
 import random
 from operator import itemgetter
+import matplotlib.pyplot as plt
+from scipy.stats import expon
 
 
 random.seed(10)
@@ -382,6 +384,11 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
         'waiting_times_q3': waiting_times_q3,
         'waiting_times_q4': waiting_times_q4,
         'waiting_times_q5': waiting_times_q5,
+        "arrival_times_q1": arrival_times_q1,
+        "arrival_times_q2": arrival_times_q2,
+        "arrival_times_q3": arrival_times_q3,
+        "arrival_times_q4": arrival_times_q4,
+        "arrival_times_q5": arrival_times_q5
     }
 
 [p,q,r] = [0, 1, 1]
@@ -422,6 +429,42 @@ else:
     print(f"Average waiting time in Queue 4: {results['avg_waiting_time_q4']:.4f}")
     print(f"Average waiting time in Queue 5: {results['avg_waiting_time_q5']:.4f}")
     
+#%%
+arr_times_q1 = np.array(list(results["arrival_times_q1"].values()))
+interarr_q1 = arr_times_q1[1:] - arr_times_q1[:-1]
+
+plt.figure()
+plt.hist(interarr_q1, weights=np.ones_like(interarr_q1) / len(interarr_q1), bins=40, density=True, alpha=0.6, color='skyblue')
+
+mean_interarrival = np.mean(interarr_q1)
+x = np.linspace(0, np.max(interarr_q1), 100)
+exp_density = expon.pdf(x, scale=mean_interarrival)
+
+plt.plot(x, exp_density, 'r-', lw=2, label=f"exponential density, mean ={mean_interarrival:.2f}")
+
+plt.xlabel("Interarrival Time")
+plt.ylabel("Density")
+plt.legend()
+plt.show()
+
+#%%
+arr_times_q4 = np.array(list(results["arrival_times_q4"].values()))
+interarr_q4 = arr_times_q4[1:] - arr_times_q4[:-1]
+
+plt.figure()
+plt.hist(interarr_q4, weights=np.ones_like(interarr_q4) / len(interarr_q4), bins=40, density=True, alpha=0.6, color='skyblue')
+
+mean_interarrival = np.mean(interarr_q4)
+x = np.linspace(0, np.max(interarr_q4), 100)
+exp_density = expon.pdf(x, scale=mean_interarrival)
+
+plt.plot(x, exp_density, 'r-', lw=2, label=f"exponential density, mean ={mean_interarrival:.2f}")
+
+plt.xlabel("Interarrival Time")
+plt.ylabel("Density")
+plt.legend()
+plt.show()
+
 #%%
 
 # all customers that left the system

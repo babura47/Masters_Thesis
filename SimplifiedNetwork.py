@@ -60,17 +60,17 @@ def wait_times_old(params, state):
 """
 plots with n3 and n4 fixed
 """
-n=20 #nimax for all i
+n=10 #nimax for all i
 
-params = [1.,10,1,1,1]
+params = [1,100,1,1,1]
 [l,mu1,mu2,mu3,mu4] = params
 n1r = np.array(range(n))
 n2r = np.array(range(n))
 
 best_resp = np.zeros([n,n])
 A,B = expected_waiting_time(params, [n,n,n,n])
-n3 = 1
-n4 = 1
+n3 = 0
+n4 = 0
 
 for i in range(n):
     n1 = n1r[i]
@@ -99,15 +99,15 @@ for i in range(n):
 Y, X = np.meshgrid(n1r, n2r)
 plt.figure(figsize=(6, 6))
 
-marker1 = matplotlib.markers.MarkerStyle('o', fillstyle='full')
+marker1 = matplotlib.markers.MarkerStyle('o', fillstyle='top')
 plt.scatter(X[best_resp == 2], Y[best_resp == 2], color='red', label='Route 2-4', marker=marker1)
 plt.scatter(X[best_resp == 1], Y[best_resp == 1], color='blue', label='Route 1-3', marker=marker1)
 plt.scatter(X[best_resp == 1.5], Y[best_resp == 1.5], color='yellow', label='Both routes', marker=marker1)
 
-# Y, X = np.meshgrid(n1r, n2r)
-# plt.scatter(X[best_resp_old == 2], Y[best_resp_old == 2], color='red', label='Route 2-4\nno starvation', marker=matplotlib.markers.MarkerStyle('o', fillstyle='bottom'))
-# plt.scatter(X[best_resp_old == 1], Y[best_resp_old == 1], color='blue', label='Route 1-3\nno starvation', marker=matplotlib.markers.MarkerStyle('o', fillstyle='bottom'))
-# plt.scatter(X[best_resp_old == 1.5], Y[best_resp_old == 1.5], color='yellow', label='Both routes\nno starvation', marker=matplotlib.markers.MarkerStyle('o', fillstyle='bottom'))
+Y, X = np.meshgrid(n1r, n2r)
+plt.scatter(X[best_resp_old == 2], Y[best_resp_old == 2], color='red', label='Route 2-4\nno starvation', marker=matplotlib.markers.MarkerStyle('o', fillstyle='bottom'))
+plt.scatter(X[best_resp_old == 1], Y[best_resp_old == 1], color='blue', label='Route 1-3\nno starvation', marker=matplotlib.markers.MarkerStyle('o', fillstyle='bottom'))
+plt.scatter(X[best_resp_old == 1.5], Y[best_resp_old == 1.5], color='yellow', label='Both routes\nno starvation', marker=matplotlib.markers.MarkerStyle('o', fillstyle='bottom'))
 
 plt.xlabel('$n_1$')
 plt.ylabel('$n_2$')

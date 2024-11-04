@@ -55,7 +55,7 @@ def simulate_network(parameters, simulation_time, seed):
     server3_busy = False
     server4_busy = False
 
-    departures = [0,0,0,0,0]
+    departures = [0,0,0,0]
     
     A, B = sn.expected_waiting_time(parameters, [100,100,100,100])
 
@@ -351,7 +351,6 @@ def simulate_network(parameters, simulation_time, seed):
         "total_wait_time": total_wait_time
     }
 
-
 # Parameters
 lam = 1.8
 mu1 = 1.   
@@ -363,18 +362,29 @@ params=[lam,mu1,mu2,mu3, mu4]
 
 simulation_time = 50000
 warm_up_time = 5000
+nr_sim = 20
 
-avg_waits = np.zeros([20,2])
 
-for i in range(20):
-    # Run the simulation
+avg_waits = np.zeros([nr_sim,2])
+average_wait= np.zeros(nr_sim)
+for i in range(nr_sim):
+
     print(i)
     results = simulate_network(params,  simulation_time, seed=i)
-    avg_waits[i,0] = results['avg_waiting_time_q1'] + results['avg_waiting_time_q3']
-    avg_waits[i,1] = results['avg_waiting_time_q2'] + results['avg_waiting_time_q4']
+    nr_cust_13 = results["departures"][2]
+    nr_cust_24 = results["departures"][3]
+    
+    avg_wait_13 = results['avg_waiting_time_q1'] + results['avg_waiting_time_q3']
+    avg_wait_24 = results['avg_waiting_time_q2'] + results['avg_waiting_time_q4']
+    
+    avg_waits[i,0] = avg_wait_13
+    avg_waits[i,1] = avg_wait_24
+    
+    average_wait[i] = nr_cust_13/(nr_cust_13+nr_cust_24)*avg_wait_13 + nr_cust_24/(nr_cust_13+nr_cust_24) * avg_wait_24 
 
+print(np.mean(avg_waits, axis= 0))
+print(np.mean(average_wait))
 #%%
-
 # %%
 
 from scipy.stats import expon
