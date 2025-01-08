@@ -162,7 +162,7 @@ parameters= [1,1,1,1,1,1]
 for state in states:
     pt = time.time()
     wt, pi3, pi4, niter,_ = main(state,parameters, wait_times1, N)
-    if i%100==0:
+    if i%1500==0:
         print(f"i = {i},current state is {state}, cummulative time = {pt-start:2f} seconds, niter={niter}")
     tt = time.time()
     wait_times1[tuple(state)] = [wt,pi3,pi4]
