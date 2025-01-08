@@ -234,7 +234,7 @@ for state in states:
     pt = time.time()
     wt, pi3, pi4 = main(state,parameters, wait_times1, N)
     tt = time.time()
-    if i%1400==0:
+    if i%700==0:
         print(f"i = {i}, time = {tt-pt :.2f} seconds")
         print(f"current state is {state}")
     wait_times1[tuple(state)] = [wt,pi3,pi4]
