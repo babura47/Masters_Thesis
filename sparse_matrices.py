@@ -50,7 +50,7 @@ def transition1(state, transition, params, servers_not_full,policy):
        
     elif transition == 2:  # finished service at S2
         if servers_not_full[3]==True and servers_not_full[4]==True:
-            min_queue = 3 if div[3] <= div[4] else 4
+            min_queue = 3 if div[3] < div[4] else 4
         elif servers_not_full[3] == False:
             min_queue = 4
         elif servers_not_full[4] == False:
