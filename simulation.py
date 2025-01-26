@@ -8,18 +8,10 @@ Created on Wed Oct 16 17:49:18 2024
 import numpy as np
 import heapq
 import random
-from operator import itemgetter
 import matplotlib.pyplot as plt
-from scipy.stats import expon
 
+#%%
 
-random.seed(10)
-np.random.seed(10)
-
-"""
-Add warmup time to simulation ?
-Once simulation time is up, add NaN to waiting time of customers still in the system
-"""
 
 ARRIVAL_SYSTEM = 0
 
@@ -39,13 +31,18 @@ class Event:
     def __lt__(self, other):
         return self.event_time < other.event_time
 
-def simulate_network(parameters, simulation_time, routing_probabilities ):
+def simulate_network(parameters, simulation_time, policy,seed ):
+    
+    
+
+    random.seed(seed)
+    np.random.seed(seed)    
 
     [lambda_rate, mu1, mu2, mu3 , mu4, mu5] = parameters
     
-    if len(routing_probabilities)  == 3:
+    if len(policy)  == 3:
         observability = False
-        [p,q,r] = routing_probabilities
+        [p,q,r] = policy
     else: 
         observability = True
     
@@ -92,11 +89,17 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
     state_upon_arrival = {}
     state_first_service_done = {}
     
+    n_i_max = np.zeros(5)
+    
     waiting_times_q1 = {} 
     waiting_times_q2 = {} 
     waiting_times_q3 = {} 
     waiting_times_q4 = {} 
     waiting_times_q5 = {} 
+    
+    off_policy_customers = [] #stores the id's of customers whos arrival state is not in the policy dictionary, so they use wJSQ instead of Nash
+    
+    total_wait_time = 0
     
     inter_arrival_time = np.random.exponential(1 / lambda_rate)
     heapq.heappush(event_queue, Event(ARRIVAL_SYSTEM, inter_arrival_time, customer_id))
@@ -133,16 +136,27 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
             n4 = len(queue4)+int(server4_busy)
             n5 = len(queue5)+int(server5_busy)
             
-            state_upon_arrival[customer_id] = [n1,n2,n3,n4,n5]
+            state_upon_arrival[event.customer_id] = [n1,n2,n3,n4,n5]
             
+            for k in range(5):
+                if state_upon_arrival[event.customer_id][k] > n_i_max[k]:
+                    n_i_max[k] = state_upon_arrival[event.customer_id][k]
 
             if observability == False: 
                 Q1orQ2 = random.choices([1,2], weights=[p,1-p])[0] 
-            else: 
-                if n1/mu1 != n2/mu2:
-                    Q1orQ2 = np.argmin([n1/mu1,n2/mu2]) + 1 #join shortest queue
+            else:
+                if type(policy)== dict:
+                    
+                    if (n1,n2,n3,n4,n5) in policy.keys():
+                        Q1orQ2 = policy[(n1,n2,n3,n4,n5)] + 1
+                    else:
+                        Q1orQ2 = 2 if n1/mu1>=n2/mu2 else 1  #join shortest queue
+                        off_policy_customers.append(event.customer_id)
                 else:
-                    Q1orQ2 = random.choices([1,2], weights=[0.5, 0.5])[0]
+                    # if n1/mu1 != n2/mu2:
+                    Q1orQ2 = 2 if n1/mu1>=n2/mu2 else 1  #join shortest queue
+                    # else:
+                    #     Q1orQ2 = random.choices([1,2], weights=[0.5, 0.5])[0]
                     
             decision1[event.customer_id] = Q1orQ2 
 
@@ -189,6 +203,7 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
             if time>warm_up_time:
                 total_waiting_time_q1 += waiting_time_q1
                 departures[0] += 1
+                total_wait_time += waiting_time_q1
                 
             if queue1:
                 # Serve the next customer in Queue 1
@@ -213,10 +228,10 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
             if observability == False:
                 Q3orQ4 = random.choices([3,4], weights=[q,1-q])[0]
             else: 
-                if n3/mu3 != n4/mu4:
-                    Q3orQ4 = np.argmin([n3/mu3,n4/mu4]) + 3
-                else:
-                    Q3orQ4 = random.choices([3,4], weights=[0.5,0.5])[0]
+                # if n3/mu3 != n4/mu4:
+                Q3orQ4 = np.argmin([n3/mu3,n4/mu4]) + 3
+                # else:
+                #     Q3orQ4 = random.choices([3,4], weights=[0.5,0.5])[0]
                 
             decision2[event.customer_id] = Q3orQ4
             
@@ -245,13 +260,14 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
                     
         elif event.event_type == DEPARTURE_Q2:
      
-            waiting_time_q2 = time -( arrival_times_q2[event.customer_id] + service_times_q2[event.customer_id]) # add minus  service time of customer
+            waiting_time_q2 = time - (arrival_times_q2[event.customer_id] + service_times_q2[event.customer_id]) # add minus  service time of customer
             waiting_times_q2[event.customer_id] = waiting_time_q2
 
             if time>warm_up_time:
                 departures[1] += 1
                 total_waiting_time_q2 += waiting_time_q2
-            
+                total_wait_time += waiting_time_q2
+
             
             
             if queue2:
@@ -274,10 +290,10 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
             if observability == False:
                 Q4orQ5 = random.choices([4,5], weights=[r,1-r])[0]
             else: 
-                if n4/mu4 != n5/mu5:
-                    Q4orQ5 = np.argmin([n4/mu4,n5/mu5]) + 4
-                else: 
-                    Q4orQ5 = random.choices([4,5], weights=[0.5, 0.5])[0]
+                # if n4/mu4 != n5/mu5:
+                Q4orQ5 = np.argmin([n4/mu4,n5/mu5]) + 4
+                # else: 
+                #     Q4orQ5 = random.choices([4,5], weights=[0.5, 0.5])[0]
             decision2[event.customer_id] = Q4orQ5
             
             if Q4orQ5 == 4:
@@ -311,6 +327,8 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
             if time>warm_up_time:
                 total_waiting_time_q3 += waiting_time_q3
                 departures[2] += 1
+                total_wait_time += waiting_time_q3
+
 
             if queue3:
                 next_customer = queue3.pop(0)
@@ -329,6 +347,8 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
             if time>warm_up_time:
                 departures[3] += 1
                 total_waiting_time_q4 += waiting_time_q4
+                total_wait_time += waiting_time_q4
+
                 
             if queue4:
                 next_customer = queue4.pop(0)
@@ -349,6 +369,7 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
             if time>warm_up_time:
                 departures[4] += 1
                 total_waiting_time_q5 += waiting_time_q5
+                total_wait_time += waiting_time_q5
                 
             if queue5:
                 next_customer = queue5.pop(0)
@@ -366,7 +387,7 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
     avg_waiting_time_q5 = total_waiting_time_q5 / departures[4] if departures[4] > 0 else 0
     
     waiting_times_q4 = dict(sorted(waiting_times_q4.items())) #unsorted because of overtaking
-    
+    avg_wait_time = total_wait_time/np.sum(departures[2:])
     
     return {
         'total_customers': total_customers,
@@ -384,106 +405,125 @@ def simulate_network(parameters, simulation_time, routing_probabilities ):
         'waiting_times_q3': waiting_times_q3,
         'waiting_times_q4': waiting_times_q4,
         'waiting_times_q5': waiting_times_q5,
-        "arrival_times_q1": arrival_times_q1,
-        "arrival_times_q2": arrival_times_q2,
-        "arrival_times_q3": arrival_times_q3,
-        "arrival_times_q4": arrival_times_q4,
-        "arrival_times_q5": arrival_times_q5
+        "n_i_max": n_i_max,
+        "avg_wait_time": avg_wait_time,
+        "off_policy_customers": off_policy_customers
     }
 
-[p,q,r] = [0, 1, 1]
 
-# Parameters
-lam = 1.8
-mu1 = 1.; lam1= p*lam       
-mu2 = 1.; lam2=(1-p)*lam       
-
-mu3 = 0.7; lam3 = p*q*lam 
-mu4=0.7; lam4 = ((p*(1-q))+(1-p)*r)*lam
-mu5=0.7; lam5= (1-p)*(1-r)*lam
-params=[lam,mu1,mu2,mu3, mu4,mu5]
-
-simulation_time = 100000
+params = [1.6,1.,1.,1,1,1]
+simulation_time = 500000
 warm_up_time = 10000
 # Run the simulation
-results = simulate_network(params,  simulation_time, [])
+results = simulate_network(params,  simulation_time,[0.5,2/3,1/3], seed=6)
 
-# Output results
-print(f"Total customers arrived: {results['total_customers']}")
-print(f"Total customers departed Queue 1: {results['departures'][0]}")
-print(f"Total customers departed Queue 2: {results['departures'][1]}")
-print(f"Total customers departed Queue 3: {results['departures'][2]}")
-print(f"Total customers departed Queue 4: {results['departures'][3]}")
-print(f"Total customers departed Queue 5: {results['departures'][4]}")
+print(results["avg_wait_time"])
+print(results["n_i_max"])
 
-if 2 ==1:
-    print(f"Average waiting time in Queue 1: {results['avg_waiting_time_q1']:.4f}, expected {round(lam1/(mu1*(mu1-lam1)),3)}")
-    print(f"Average waiting time in Queue 2: {results['avg_waiting_time_q2']:.4f}, expected {round(lam2/(mu2*(mu2-lam2)),3)}")
-    print(f"Average waiting time in Queue 3: {results['avg_waiting_time_q3']:.4f}, expected {round(lam3/(mu3*(mu3-lam3)),3)}")
-    print(f"Average waiting time in Queue 4: {results['avg_waiting_time_q4']:.4f}, expected {round(lam4/(mu4*(mu4-lam4)),3)}")
-    print(f"Average waiting time in Queue 5: {results['avg_waiting_time_q5']:.4f}, expected {round(lam5/(mu5*(mu5-lam5)),3)}")
-else: 
-    print(f"Average waiting time in Queue 1: {results['avg_waiting_time_q1']:.4f}")
-    print(f"Average waiting time in Queue 2: {results['avg_waiting_time_q2']:.4f}")
-    print(f"Average waiting time in Queue 3: {results['avg_waiting_time_q3']:.4f}")
-    print(f"Average waiting time in Queue 4: {results['avg_waiting_time_q4']:.4f}")
-    print(f"Average waiting time in Queue 5: {results['avg_waiting_time_q5']:.4f}")
+#%%
+
+
+
+#%%
+
+""" this bit compares the average waiting times if we use policy and if we use wjsq""" 
+params=np.array([1., 1., 1., 3., 3., 3.])
+
+simulation_time = 500000
+warm_up_time = 10000
+nr_sim = 5
+
+avg_waits =[]
+avg_waits_wjsq =[]
+avg_waits_unobs =[]
+
+
+N1=10; N3=6
+name = str(params) + str(N1) +"_"+  str(N3) +"old"+  ".pkl"
+with open(name, 'rb') as f:
+    policy = pickle.load(f)
+
+for i in range(nr_sim):
+    results = simulate_network(params,  simulation_time,policy, seed=i)
+    avg_waits.append(results["avg_wait_time"])
+    #print(results["n_i_max"]) 
     
+for i in range(nr_sim):
+    results = simulate_network(params,  simulation_time,[], seed=i)
+    avg_waits_wjsq.append(results["avg_wait_time"])
+    #print(results["n_i_max"]) 
+
+for i in range(nr_sim):
+    results = simulate_network(params,  simulation_time,[0.5, 2/3, 1/3], seed=i)
+    avg_waits_unobs.append(results["avg_wait_time"])
+    #print(results["n_i_max"]) 
+
+
+#print([round(i,3) for i in np.mean(avg_waits, axis= 0)])
+avg_waits = np.array(avg_waits)
+mean1=np.mean(avg_waits)
+
+sd1=np.sqrt(np.var(avg_waits))
+se1=2.086*sd1/np.sqrt(nr_sim)
+print("Nash CI is: ", [round(mean1-se1,3), round(mean1+se1,3)])
+
+
+
+#print([round(i,3) for i in np.mean(avg_waits, axis= 0)])
+avg_waits_wjsq = np.array(avg_waits_wjsq)
+mean1=np.mean(avg_waits_wjsq)
+sd1=np.sqrt(np.var(avg_waits_wjsq))
+se1=2.086*sd1/np.sqrt(nr_sim)
+print("wjsq CI is: ", [round(mean1-se1,3), round(mean1+se1,3)])
+
+#print([round(i,3) for i in np.mean(avg_waits, axis= 0)])
+avg_waits_unobs = np.array(avg_waits_unobs)
+mean1=np.mean(avg_waits_unobs)
+sd1=np.sqrt(np.var(avg_waits_unobs))
+se1=2.086*sd1/np.sqrt(nr_sim)
+print("Unobs CI is: ", [round(mean1-se1,3), round(mean1+se1,3)])
+
 #%%
-arr_times_q1 = np.array(list(results["arrival_times_q1"].values()))
-interarr_q1 = arr_times_q1[1:] - arr_times_q1[:-1]
+params=[0.1, 1., 1., 1, 1, 1]
 
-plt.figure()
-plt.hist(interarr_q1, weights=np.ones_like(interarr_q1) / len(interarr_q1), bins=40, density=True, alpha=0.6, color='skyblue')
+tot_wait = 0
+j = 0
+val = [0,1,1,1,0]
+simulation_time = 100000
 
-mean_interarrival = np.mean(interarr_q1)
-x = np.linspace(0, np.max(interarr_q1), 100)
-exp_density = expon.pdf(x, scale=mean_interarrival)
+for l in range(1):
+    results = simulate_network(params,  simulation_time, policy, seed=l)
 
-plt.plot(x, exp_density, 'r-', lw=2, label=f"exponential density, mean ={mean_interarrival:.2f}")
+    state_upon_arrival = results['state_upon_arrival'] 
+    decision1 = results['decision1'] 
+    decision2 = results['decision2']
+    wait_times_q1 = results['waiting_times_q1']
+    wait_times_q2 = results['waiting_times_q2']
+    wait_times_q3 = results['waiting_times_q3']
+    wait_times_q4 = results['waiting_times_q4'] 
+    wait_times_q5 = results['waiting_times_q5']
+    all_cust = [*list(wait_times_q3.keys()),*list(wait_times_q4.keys()), *list(wait_times_q5.keys())]
+    
+    customers = [k for k,v in state_upon_arrival.items() if v==val and k in all_cust]
+    wait_times = [wait_times_q1, wait_times_q2, wait_times_q3, wait_times_q4, wait_times_q5]
 
-plt.xlabel("Interarrival Time")
-plt.ylabel("Density")
-plt.legend()
-plt.show()
+    
+    print(len(customers))
+    for i in range(len(customers)):
+        dec1 = decision1[customers[i]]
+        dec2 = decision2[customers[i]]
+        wt =  wait_times[dec1-1][customers[i]] + wait_times[dec2-1][customers[i]]
+        if dec1==1:
+            tot_wait += wt
+            j+= 1
+
+
+print(tot_wait/j)
+    
+
+
 
 #%%
-arr_times_q4 = np.array(list(results["arrival_times_q4"].values()))
-interarr_q4 = arr_times_q4[1:] - arr_times_q4[:-1]
-
-plt.figure()
-plt.hist(interarr_q4, weights=np.ones_like(interarr_q4) / len(interarr_q4), bins=40, density=True, alpha=0.6, color='skyblue')
-
-mean_interarrival = np.mean(interarr_q4)
-x = np.linspace(0, np.max(interarr_q4), 100)
-exp_density = expon.pdf(x, scale=mean_interarrival)
-
-plt.plot(x, exp_density, 'r-', lw=2, label=f"exponential density, mean ={mean_interarrival:.2f}")
-
-plt.xlabel("Interarrival Time")
-plt.ylabel("Density")
-plt.legend()
-plt.show()
-
-#%%
-
-# all customers that left the system
-
-
-
-
-state_upon_arrival = results['state_upon_arrival'] 
-decision1 = results['decision1'] 
-decision2 = results['decision2']
-wait_times_q1 = results['waiting_times_q1']
-wait_times_q2 = results['waiting_times_q2']
-wait_times_q3 = results['waiting_times_q3']
-wait_times_q4 = results['waiting_times_q4'] 
-wait_times_q5 = results['waiting_times_q5']
-
-all_cust = [*list(wait_times_q3.keys()),*list(wait_times_q4.keys()), *list(wait_times_q5.keys())]
-
-
 
 # obtaining all customers that are done with queueing at stage 2. make a list of all customers done at first stage queueing, then check
 # for each of them if they're in wait_times_q3 or 4 or 5. 
@@ -516,7 +556,7 @@ all_cust = [*list(wait_times_q3.keys()),*list(wait_times_q4.keys()), *list(wait_
 best_decision= {}
 
 for j in range(49,50):
-    val = list(state_upon_arrival.values())[j]
+    val = [0,0,1,1,0]
     print(val)
     customers = [k for k,v in state_upon_arrival.items() if v==val and k in all_cust]
     print(customers)
@@ -541,15 +581,23 @@ for j in range(49,50):
 
 
 
+#%%
+val = [0,0,1,1,0]
+customers = [k for k,v in state_upon_arrival.items() if v==val and k in all_cust]
+wait_times = [wait_times_q1, wait_times_q2, wait_times_q3, wait_times_q4, wait_times_q5]
 
+tot_wait = 0; j=0
+print(len(customers))
+for i in range(len(customers)):
+    dec1 = decision1[customers[i]]
+    dec2 = decision2[customers[i]]
+    wt =  wait_times[dec1-1][customers[i]] + wait_times[dec2-1][customers[i]]
+    #print([wait_times[dec1-1][customers[i]], wait_times[dec2-1][customers[i]]] )
+    if dec1==1:
+        tot_wait += wt
+        j+= 1
 
-
-
-
-
-
-
-
+print(tot_wait/j)
 
 
 
